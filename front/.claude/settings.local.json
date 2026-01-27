@@ -11,7 +11,15 @@
       "Bash(npx vercel link --project todo-app-with-chatbot)",
       "Bash(npx vercel link --project todo-app-with-chatbot --yes)",
       "Bash(git add .)",
-      "Bash(git commit -m \"Fix: Update vercel.json to set correct root directory for Next.js app\")"
+      "Bash(git commit -m \"Fix: Update vercel.json to set correct root directory for Next.js app\")",
+      "Bash(git push origin main)",
+      "Bash(git pull origin main)",
+      "Bash(git add vercel.json)",
+      "Bash(git commit -m \"chore: add vercel.json to configure Next.js root directory\")",
+      "mcp__vercel__get_project",
+      "mcp__vercel__get_deployment_build_logs",
+      "mcp__vercel__get_deployment",
+      "Bash(git commit -m \"fix: update vercel.json in front directory\")"
     ]
   }
 }
