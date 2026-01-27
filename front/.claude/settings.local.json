@@ -1,7 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ls -la *.json)"
+      "Bash(ls -la *.json)",
+      "Bash(vercel --version)",
+      "Bash(npx vercel --prod)",
+      "Bash(npx vercel --prod --yes)",
+      "Bash(npx vercel unlink)",
+      "Bash(npx vercel link --delete)",
+      "Bash(npx vercel help link)",
+      "Bash(npx vercel link --project todo-app-with-chatbot)",
+      "Bash(npx vercel link --project todo-app-with-chatbot --yes)",
+      "Bash(git add .)",
+      "Bash(git commit -m \"Fix: Update vercel.json to set correct root directory for Next.js app\")"
     ]
   }
 }
