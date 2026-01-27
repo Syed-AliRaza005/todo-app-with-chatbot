@@ -107,7 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } else {
             // If getting user info fails, use the user ID from the auth result
             const basicUserInfo = {
-              id: authResult.user_id,
+              id: authResult.user_id || 'unknown',
               email,
               name: email.split('@')[0] // Just for demo
             };
@@ -117,7 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch (userInfoError) {
           // Fallback to basic user info if fetching user info fails
           const basicUserInfo = {
-            id: authResult.user_id,
+            id: authResult.user_id || 'unknown',
             email,
             name: email.split('@')[0] // Just for demo
           };

@@ -22,7 +22,9 @@
       "Bash(git commit -m \"fix: update vercel.json in front directory\")",
       "Bash(git commit -m \"chore: update vercel.json with explicit build commands\")",
       "Bash(git commit -m \"feat: add vercel.json at root to specify front directory as project root\")",
-      "Bash(git commit -m \"chore: update vercel.json to properly specify front as root directory\")"
+      "Bash(git commit -m \"chore: update vercel.json to properly specify front as root directory\")",
+      "Bash(findstr /n /i \"authresult\\\\|isCancelled\\\\|setUser\" hooks/useAuth.tsx)",
+      "Bash(git commit -m \"fix: resolve undefined variable issues in api.ts and useAuth.tsx\")"
     ]
   }
 }
