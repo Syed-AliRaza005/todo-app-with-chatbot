@@ -9,9 +9,8 @@ import TaskForm from '@/components/task/TaskForm';
 import EmptyState from '@/components/layout/EmptyState';
 import TaskFilters from '@/components/task/TaskFilters';
 import StatisticsDisplay from '@/components/task/StatisticsDisplay';
-import { taskApi, Task, CreateTaskRequest, UpdateTaskRequest } from '@/lib/api';
-import { Task as TaskType } from '@/types/task';
-import { TaskFilterOptions } from '@/types/task';
+import { taskApi, CreateTaskRequest, UpdateTaskRequest } from '@/lib/api';
+import { Task as TaskType, TaskFilterOptions } from '@/types/task';
 
 export default function DashboardPage() {
   const { user } = useAuth();
