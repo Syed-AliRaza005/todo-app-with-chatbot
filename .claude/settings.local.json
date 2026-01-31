@@ -5,7 +5,15 @@
       "Bash(npm run build)",
       "mcp__vercel__list_teams",
       "mcp__vercel__list_projects",
-      "mcp__vercel__search_vercel_documentation"
+      "mcp__vercel__search_vercel_documentation",
+      "Bash(git push origin main)",
+      "Bash(git add vercel.json)",
+      "Bash(vercel whoami)",
+      "Bash(vercel --prod)",
+      "Bash(vercel --prod --yes)",
+      "Bash(VERCEL_ORG_ID=team_jWFRlGPH1NIwXhtmveFi0VMm VERCEL_PROJECT_ID=prj_xyu6DZZnJCem4r5NX2TNCtC82MbV vercel --prod --yes)",
+      "Bash(vercel --confirm)",
+      "Bash(git add vercel.json front/package.json front/package-lock.json .claude/settings.local.json)"
     ]
   }
 }
