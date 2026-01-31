@@ -100,6 +100,41 @@ Authentication is handled through Better Auth. The auth context is provided at t
 3. Make your changes
 4. Submit a pull request
 
+## Deployment
+
+### Vercel Deployment
+
+This application is designed for deployment on Vercel. The repository follows a monorepo structure with the Next.js frontend located in the `front/` directory.
+
+#### Configuration
+
+The deployment is configured with a `vercel.json` file in the repository root:
+
+```json
+{
+  "framework": "nextjs",
+  "root": "./front"
+}
+```
+
+This tells Vercel to:
+- Recognize the project as a Next.js application
+- Use the `./front` directory as the project root
+- Apply Next.js-specific build optimizations
+
+#### Deployment Steps
+
+1. Connect your GitHub repository to Vercel
+2. Vercel will automatically detect the Next.js framework
+3. The build command will run from the `front/` directory
+4. All path aliases and dependencies will be resolved correctly
+
+#### Common Issues Fixed
+
+- **Path Resolution**: The root `vercel.json` file ensures proper path resolution for imports like `@/*`
+- **Tailwind CSS**: Proper configuration with the new Tailwind engine (v4+)
+- **Build Commands**: Simplified to use Next.js automatic detection instead of custom commands
+
 ## License
 
 [Specify your license here]

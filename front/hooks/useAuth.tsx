@@ -117,7 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } catch (userInfoError) {
           // Fallback to basic user info if fetching user info fails
           const basicUserInfo = {
-            id: authResult.user_id || 'unknown',
+            id: authResult?.user_id || 'unknown',
             email,
             name: email.split('@')[0] // Just for demo
           };
