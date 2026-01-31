@@ -13,7 +13,13 @@
       "Bash(vercel --prod --yes)",
       "Bash(VERCEL_ORG_ID=team_jWFRlGPH1NIwXhtmveFi0VMm VERCEL_PROJECT_ID=prj_xyu6DZZnJCem4r5NX2TNCtC82MbV vercel --prod --yes)",
       "Bash(vercel --confirm)",
-      "Bash(git add vercel.json front/package.json front/package-lock.json .claude/settings.local.json)"
+      "Bash(git add vercel.json front/package.json front/package-lock.json .claude/settings.local.json)",
+      "Bash(git commit -m \"feat: update Vercel config and dependencies for successful deployment\n\n- Simplified vercel.json for Next.js monorepo deployment\n- Updated Next.js version from 16.0.10 to ^16.1.6\n- Added baseline-browser-mapping dev dependency\n- Updated Claude settings with Vercel deployment commands\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\")",
+      "Bash(git config user.email)",
+      "Bash(git commit --amend --author=\"Syed-AliRaza005 <Syed-AliRaza005@users.noreply.github.com>\" --no-edit)",
+      "Bash(ls -la *.json)",
+      "mcp__vercel__deploy_to_vercel",
+      "Bash(git add .)"
     ]
   }
 }
