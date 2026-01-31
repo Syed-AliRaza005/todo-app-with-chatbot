@@ -1,0 +1,11 @@
+{
+  "builds": [
+    {
+      "src": "front/**/*",
+      "use": "@vercel/next",
+      "config": {
+        "rootDirectory": "front"
+      }
+    }
+  ]
+}
