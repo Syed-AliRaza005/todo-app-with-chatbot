@@ -111,27 +111,37 @@ class CommandProcessor:
     def handle_add_todo(self, parsed_command: ParsedCommand) -> Dict[str, Any]:
         """
         Handle adding a new todo
+        Enhanced to handle separate title and description entities
         """
         try:
             # Extract task title and description from entities
             title = None
             description = ""
 
+            # First, look for explicit task_title entity (from complex patterns)
             for entity in parsed_command.entities:
-                if entity['type'] == 'task_description':
-                    desc_value = entity['value'].strip()
+                if entity['type'] == 'task_title':
+                    title = entity['value'].strip().capitalize()
+                elif entity['type'] == 'task_description':
+                    description = entity['value'].strip().capitalize()
 
-                    # Try to split into title and description if there are multiple parts
-                    if ' - ' in desc_value:
-                        parts = desc_value.split(' - ', 1)
-                        title = parts[0].strip()
-                        description = parts[1].strip()
-                    elif ':' in desc_value:
-                        parts = desc_value.split(':', 1)
-                        title = parts[0].strip()
-                        description = parts[1].strip()
-                    else:
-                        title = desc_value
+            # If we still don't have a title, try to extract from task_description
+            if not title:
+                for entity in parsed_command.entities:
+                    if entity['type'] == 'task_description':
+                        desc_value = entity['value'].strip()
+
+                        # Try to split into title and description if there are multiple parts
+                        if ' - ' in desc_value:
+                            parts = desc_value.split(' - ', 1)
+                            title = parts[0].strip().capitalize()
+                            description = parts[1].strip().capitalize()
+                        elif ':' in desc_value:
+                            parts = desc_value.split(':', 1)
+                            title = parts[0].strip().capitalize()
+                            description = parts[1].strip().capitalize()
+                        else:
+                            title = desc_value.capitalize()
 
             if not title:
                 # Try to extract title from the raw input if not found in entities
@@ -148,10 +158,15 @@ class CommandProcessor:
             # Create the task
             task = self.todo_ops_service.create_task(title, description)
 
+            if description:
+                message = f'Successfully added task: "{task.title}" with description: "{task.description}"'
+            else:
+                message = f'Successfully added task: "{task.title}"'
+
             return {
                 'success': True,
                 'operation_type': 'ADD',
-                'message': f'Successfully added task: "{task.title}"',
+                'message': message,
                 'affected_task': task.to_dict(),
                 'parsed_command': parsed_command.to_dict()
             }

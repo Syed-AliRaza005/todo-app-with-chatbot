@@ -96,16 +96,43 @@ class NLPParser:
     def preprocess_text(self, text: str) -> str:
         """
         Preprocess the input text by normalizing and handling multilingual expressions
+        Enhanced to handle more multilingual patterns
         """
         text = text.strip()
 
         # Normalize whitespace
         text = re.sub(r'\s+', ' ', text)
 
+        # Enhanced multilingual patterns mapping
+        enhanced_multilingual_patterns = {
+            "ya": ["or", "and"],  # "ya" can mean "or" or "and" in Urdu/Hindi
+            "them": ["then", "and", "to them", "to"],  # "them" used as "then" in mixed expressions
+            "jis mai": ["in which", "where", "that"],  # "jis mai" means "in which" in Urdu
+            "jis": ["which", "that", "the one which"],  # "jis" means "which" in Urdu
+            "mai": ["in", "at", "me"],  # "mai" means "in" in Urdu
+            "ke": ["of", "to", "for", "and"],  # "ke" is possessive or connector in Urdu
+            "ka": ["of", "the"],  # "ka" is possessive in Urdu/Hindi
+            "aur": ["and", "also"],  # "aur" means "and" in Urdu/Hindi
+            "karna": ["to do", "to make", "to perform"],  # "karna" means "to do" in Hindi/Urdu
+            "kar": ["do", "make", "perform"],  # "kar" is "do" in Hindi/Urdu
+            "liye": ["for", "to"],  # "liye" means "for" in Urdu/Hindi
+            "ko": ["to", "for", "him", "her"],  # "ko" is object marker in Hindi/Urdu
+            "hai": ["is", "are", "am"],  # "hai" means "is/are/am" in Hindi/Urdu
+            "hain": ["are", "is"],  # "hain" is plural of "hai" in Hindi/Urdu
+            "thaa": ["was", "were"],  # past tense in Hindi/Urdu
+            "tha": ["was", "were"],  # past tense in Hindi/Urdu
+            "naam": ["name", "title"],  # "naam" means "name" in Hindi/Urdu
+            "kaam": ["work", "task", "job"],  # "kaam" means "work/task" in Hindi/Urdu
+            "kam": ["work", "task", "job"],  # alternate spelling of "kaam"
+            "tassveer": ["picture", "image", "photo"],  # "tassveer" means "picture" in Urdu
+            "chahiye": ["need", "want", "should"],  # "chahiye" means "need/want" in Hindi/Urdu
+            "chahiyega": ["will need", "will want"],  # future form of "chahiye"
+        }
+
         # Handle common multilingual expressions
-        for key, replacements in self.multilingual_patterns.items():
+        for key, replacements in enhanced_multilingual_patterns.items():
             for replacement in replacements:
-                # Replace in a case-insensitive manner
+                # Replace in a case-insensitive manner, matching whole words
                 text = re.sub(r'\b' + re.escape(key) + r'\b', replacement, text, flags=re.IGNORECASE)
 
         return text
@@ -113,6 +140,7 @@ class NLPParser:
     def identify_intent(self, text: str) -> Tuple[Optional[IntentType], float]:
         """
         Identify the intent from the input text with confidence score
+        Enhanced to handle complex multilingual patterns first, before preprocessing
 
         Args:
             text: Input text to analyze
@@ -120,6 +148,36 @@ class NLPParser:
         Returns:
             Tuple of (intent_type, confidence_score)
         """
+        original_text = text.lower()
+
+        # First, check for complex multilingual patterns that need to be handled specially
+        # We do this on the original text before preprocessing to avoid text transformation issues
+        complex_patterns = [
+            # Pattern for: "add new task name <title> and description them <description>"
+            (r'add\s+new\s+task\s+name\s+(.+?)\s+and\s+description\s+them\s+(.+)', IntentType.ADD_TODO),
+            # Pattern for: "create new task name <title> and description them <description>"
+            (r'create\s+new\s+task\s+name\s+(.+?)\s+and\s+description\s+them\s+(.+)', IntentType.ADD_TODO),
+            # Pattern for: "create task name <title> and description them <description>"
+            (r'create\s+task\s+name\s+(.+?)\s+and\s+description\s+them\s+(.+)', IntentType.ADD_TODO),
+            # Pattern for: "add task name <title> and description them <description>"
+            (r'add\s+task\s+name\s+(.+?)\s+and\s+description\s+them\s+(.+)', IntentType.ADD_TODO),
+            # Pattern for: "add task name <title> description them <description>"
+            (r'add\s+task\s+name\s+(.+?)\s+description\s+them\s+(.+)', IntentType.ADD_TODO),
+            # Pattern for: "add new task title <title> and description them <description>"
+            (r'add\s+new\s+task\s+title\s+(.+?)\s+and\s+description\s+them\s+(.+)', IntentType.ADD_TODO),
+            # Pattern for: "add task title <title> and description them <description>"
+            (r'add\s+task\s+title\s+(.+?)\s+and\s+description\s+them\s+(.+)', IntentType.ADD_TODO),
+            # Pattern for: "add task title <title> description them <description>"
+            (r'add\s+task\s+title\s+(.+?)\s+description\s+them\s+(.+)', IntentType.ADD_TODO),
+        ]
+
+        for pattern, intent in complex_patterns:
+            match = re.search(pattern, original_text)
+            if match:
+                # High confidence for these specific complex patterns
+                return (intent, 0.98)
+
+        # If no complex patterns match, preprocess the text and use standard patterns
         processed_text = self.preprocess_text(text).lower()
 
         best_match = (None, 0.0)  # (intent, confidence)
@@ -129,7 +187,6 @@ class NLPParser:
                 match = re.search(pattern, processed_text)
                 if match:
                     # Calculate confidence based on pattern specificity and match quality
-                    # For now, assign a high confidence for matches
                     confidence = 0.9
 
                     # Adjust confidence based on pattern complexity
@@ -147,8 +204,50 @@ class NLPParser:
     def extract_entities(self, text: str, intent: IntentType) -> List[Dict[str, str]]:
         """
         Extract entities from the text based on the identified intent
+        Enhanced to handle complex patterns like "add new task name task 01 and description them new task"
         """
         entities = []
+
+        # First, try to handle complex multilingual patterns specifically
+        # Do this on the original text before preprocessing to avoid transformation issues
+        original_text = text.lower()
+
+        if intent == IntentType.ADD_TODO:
+            # Look for patterns like "add new task name <title> and description them <description>"
+            complex_patterns = [
+                # Pattern for: "add new task name task 01 and description them new task"
+                r'add\s+new\s+task\s+name\s+(.+?)\s+and\s+description\s+them\s+(.+)',
+                # Pattern for: "create new task name buy groceries and description them go to market"
+                r'create\s+new\s+task\s+name\s+(.+?)\s+and\s+description\s+them\s+(.+)',
+                # Pattern for: "create task name buy groceries and description them go to market"
+                r'create\s+task\s+name\s+(.+?)\s+and\s+description\s+them\s+(.+)',
+                # Pattern for: "add task name groceries and description them buy milk and bread"
+                r'add\s+task\s+name\s+(.+?)\s+and\s+description\s+them\s+(.+)',
+                # Pattern for: "add task name task 01 description them new task"
+                r'add\s+task\s+name\s+(.+?)\s+description\s+them\s+(.+)',
+                # Pattern for: "add new task title task 01 and description them new task"
+                r'add\s+new\s+task\s+title\s+(.+?)\s+and\s+description\s+them\s+(.+)',
+                # Pattern for: "add task title task 01 and description them new task"
+                r'add\s+task\s+title\s+(.+?)\s+and\s+description\s+them\s+(.+)',
+                # Pattern for: "add task title task 01 description them new task"
+                r'add\s+task\s+title\s+(.+?)\s+description\s+them\s+(.+)',
+                # More general pattern for "name" and "description"
+                r'(?:add|create|make)\s+(?:new\s+)?(?:task|todo|item)\s+(?:name|title)\s+(.+?)\s+(?:and\s+description|description)\s+(?:them|is|to|as)?\s+(.+)',
+            ]
+
+            for pattern in complex_patterns:
+                match = re.search(pattern, original_text)
+                if match:
+                    title = match.group(1).strip()
+                    description = match.group(2).strip()
+
+                    # Add both title and description as separate entities
+                    entities.append({"type": "task_title", "value": title})
+                    entities.append({"type": "task_description", "value": description})
+                    return entities
+
+        # If complex patterns didn't match, use the original approach
+        # Process the text and use standard patterns
         processed_text = self.preprocess_text(text).lower()
 
         # Select appropriate pattern based on intent

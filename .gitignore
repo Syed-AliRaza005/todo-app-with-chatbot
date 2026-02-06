@@ -95,3 +95,4 @@ front/node_modules/
 front/out/
 front/.env
 front/.env.local
+.vercel

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends, Header
 from pydantic import BaseModel
 from typing import Optional, Dict, List
 import logging
@@ -13,6 +13,8 @@ from .models.task import Task
 from .models.user import User
 from uuid import UUID
 import uuid
+import jwt
+from .auth.jwt import SECRET_KEY, ALGORITHM, get_user_id_from_token
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -182,7 +184,11 @@ chatbot = SimpleChatbot()
 
 
 @router.post("/message", response_model=ChatResponse)
-async def chat_message(chat_message: ChatMessageRequest, db: Session = Depends(get_db)):
+async def chat_message(
+    chat_message: ChatMessageRequest,
+    db: Session = Depends(get_db),
+    authorization: str = Header(None)
+):
     """
     Process a chat message and return a response from the chatbot.
     Includes comprehensive logging and response time tracking.
@@ -204,15 +210,89 @@ async def chat_message(chat_message: ChatMessageRequest, db: Session = Depends(g
         # Check if this is a todo-related command that requires API integration
         message_lower = chat_message.message.lower()
 
-        # Only get user_id if the user exists in the database
+        # Extract user_id from either the request or the authorization token
         user_id = None
-        if chat_message.user_id:
+
+        # First, try to get user_id from the authorization header
+        if authorization:
+            try:
+                # Extract token from "Bearer <token>" format
+                token_parts = authorization.split()
+                if len(token_parts) == 2 and token_parts[0].lower() == 'bearer':
+                    token = token_parts[1]
+
+                    # Use the existing function to get user_id from token
+                    token_user_id = get_user_id_from_token(token)
+
+                    if token_user_id:
+                        # Validate that the user exists in the database
+                        user_obj = db.get(User, token_user_id)
+                        if user_obj:
+                            user_id = token_user_id
+            except jwt.ExpiredSignatureError:
+                logger.warning("Expired token provided in chat request")
+            except jwt.JWTError:
+                logger.warning("Invalid token provided in chat request")
+            except Exception as e:
+                logger.error(f"Error decoding token: {str(e)}")
+
+        # If no user_id from token, try to get from the request body (fallback)
+        if not user_id and chat_message.user_id:
             try:
                 user_obj = db.get(User, UUID(chat_message.user_id))
                 if user_obj:
                     user_id = UUID(chat_message.user_id)
             except:
                 user_id = None
+
+        # Check if this looks like a natural language command that should be handled by the MCP server
+        # If the message contains natural language patterns, delegate to MCP server
+        mcp_keywords = ['add', 'create', 'new', 'make', 'delete', 'remove', 'complete', 'finish', 'done', 'update', 'change', 'list', 'show', 'task', 'todo', 'item', 'name', 'description', 'ya', 'them', 'jis', 'mai', 'ke']
+        if user_id and any(keyword in message_lower for keyword in mcp_keywords):
+            # This looks like a command that should be handled by the MCP server
+            # Call the MCP server to process the command
+            try:
+                # Import here to avoid circular imports
+                from .api.routes import process_natural_language_command
+                from .api.routes import NaturalLanguageCommandRequest
+
+                # Create a NaturalLanguageCommandRequest-like object
+                mcp_request = NaturalLanguageCommandRequest(
+                    command=chat_message.message,
+                    user_id=str(user_id)
+                )
+
+                # Prepare token data for the MCP server
+                token_data = {"user_id": str(user_id)}
+
+                # Call the MCP server command processing
+                mcp_result = process_natural_language_command(mcp_request, token_data, db)
+
+                if mcp_result.success:
+                    response_text = mcp_result.message
+                    # If the MCP server handled the command, we can return early
+                    # Create response
+                    response = ChatResponse(
+                        response=response_text,
+                        session_id=str(session_id),
+                        timestamp=datetime.now().isoformat(),
+                        success=True
+                    )
+
+                    # Calculate response time
+                    response_time = time.time() - start_time
+
+                    # Log comprehensive interaction data
+                    logger.info(f"MCP chat interaction completed - Session: {session_id}, Response time: {response_time:.3f}s, Message: {chat_message.message[:30]}{'...' if len(chat_message.message) > 30 else ''}")
+
+                    return response
+                else:
+                    # If MCP processing failed, fall back to the regular chatbot processing
+                    logger.warning(f"MCP server processing failed: {mcp_result.message}. Falling back to regular processing.")
+            except ImportError:
+                logger.warning("MCP server not available, falling back to regular processing")
+            except Exception as e:
+                logger.error(f"Error calling MCP server: {str(e)}. Falling back to regular processing")
 
         response_text = ""
 
@@ -242,51 +322,187 @@ async def chat_message(chat_message: ChatMessageRequest, db: Session = Depends(g
             else:
                 response_text = "I can help you list your tasks, but you need to be logged in to see your personal tasks."
 
-        # Check if the user wants to add a task
+        # Check if the user wants to add a task - enhanced to handle multilingual commands
         elif any(word in message_lower for word in ['add', 'create', 'new', 'make']) and any(word in message_lower for word in ['task', 'todo', 'item']):
             if user_id:
-                # Extract task title from the message (simple extraction)
-                # Look for patterns like "add task to buy groceries" or "create todo finish report"
+                # First, try to use the MCP server for advanced natural language processing
+                # Check if the message follows a complex pattern like "add new task name task 01 and description them new task"
                 import re
-                patterns = [
-                    r'(?:add|create|make).*?(?:task|todo|item)\s+(?:to|for|about)?\s*(.+)',
-                    r'(?:add|create|make)\s+(.+?)\s+(?:as\s+)?(?:a\s+)?(?:task|todo|item)'
+
+                # Enhanced patterns for multilingual commands
+                complex_patterns = [
+                    # Pattern for: "add new task name task 01 and description them new task"
+                    r'add\s+new\s+task\s+name\s+(.+?)\s+and\s+description\s+them\s+(.+)',
+                    # Pattern for: "create new task name buy groceries and description them go to market"
+                    r'create\s+new\s+task\s+name\s+(.+?)\s+and\s+description\s+them\s+(.+)',
+                    # Pattern for: "add task name task 01 description them new task"
+                    r'add\s+task\s+name\s+(.+?)\s+description\s+them\s+(.+)',
+                    # Pattern for: "add new task title task 01 and description them new task"
+                    r'add\s+new\s+task\s+title\s+(.+?)\s+and\s+description\s+them\s+(.+)',
                 ]
 
                 task_title = None
-                for pattern in patterns:
-                    match = re.search(pattern, message_lower)
+                task_description = ""
+
+                # Try complex patterns first
+                for pattern in complex_patterns:
+                    match = re.search(pattern, message_lower, re.IGNORECASE)
                     if match:
                         task_title = match.group(1).strip().capitalize()
+                        task_description = match.group(2).strip().capitalize()
                         break
 
-                # If we couldn't extract using patterns, try a simpler approach
+                # If complex patterns didn't match, use the original approach
                 if not task_title:
-                    # Remove common command words and get the remainder
-                    words = message_lower.split()
-                    # Find the first occurrence of task/todo and take everything after
-                    for i, word in enumerate(words):
-                        if word in ['task', 'todo', 'item']:
-                            if i + 1 < len(words):
-                                task_title = ' '.join(words[i+1:]).strip().capitalize()
-                                break
+                    # Enhanced pattern to capture both title and description
+                    patterns = [
+                        # Pattern for: "add task to buy groceries with description go to market"
+                        r'(?:add|create|make).*?(?:task|todo|item)\s+(?:to|for|about)?\s*(.+?)(?:\s+with\s+description\s+(.+)|\s+and\s+description\s+(.+))?',
+                        # Pattern for: "add task buy groceries - need to go to go to market"
+                        r'(?:add|create|make)\s+(.+?)\s+(?:-|:)\s+(.+)',
+                        # Fallback pattern
+                        r'(?:add|create|make)\s+(.+?)\s+(?:as\s+)?(?:a\s+)?(?:task|todo|item)'
+                    ]
 
-                if task_title and len(task_title) > 0:
+                    # Try each pattern
+                    for pattern in patterns:
+                        match = re.search(pattern, message_lower, re.IGNORECASE)
+                        if match:
+                            groups = match.groups()
+                            task_title = groups[0].strip().capitalize()
+
+                            # Extract description if available in the pattern
+                            if len(groups) > 1 and groups[1]:
+                                task_description = groups[1].strip().capitalize()
+                            elif len(groups) > 2 and groups[2]:  # Third group for alternative description pattern
+                                task_description = groups[2].strip().capitalize()
+                            break
+
+                    # If we couldn't extract using advanced patterns, try a simpler approach
+                    if not task_title:
+                        # Remove common command words and get the remainder
+                        words = message_lower.split()
+                        # Find the first occurrence of task/todo and take everything after
+                        for i, word in enumerate(words):
+                            if word in ['task', 'todo', 'item']:
+                                if i + 1 < len(words):
+                                    task_title = ' '.join(words[i+1:]).strip().capitalize()
+                                    break
+
+                # If still no title, ask for clarification
+                if not task_title or len(task_title) == 0:
+                    response_text = "I couldn't understand what task you want to add. Please be more specific, like 'add a task to buy groceries' or 'add task to finish report with description need to submit by Friday'."
+                else:
                     # Create a new task
                     new_task = Task(
                         user_id=user_id,
                         title=task_title,
-                        description="",  # Could extract description if needed
+                        description=task_description if task_description else "",
                         status="Pending"
                     )
                     db.add(new_task)
                     db.commit()
                     db.refresh(new_task)
-                    response_text = f"I've added the task: '{task_title}' to your list."
-                else:
-                    response_text = "I couldn't understand what task you want to add. Please be more specific, like 'add a task to buy groceries'."
+
+                    if task_description:
+                        response_text = f"I've added the task: '{task_title}' with description: '{task_description}' to your list."
+                    else:
+                        response_text = f"I've added the task: '{task_title}' to your list."
             else:
                 response_text = "I can help you add a task, but you need to be logged in first."
+
+        # Check if the user wants to update a task
+        elif any(word in message_lower for word in ['update', 'change', 'modify', 'edit']) and any(word in message_lower for word in ['task', 'todo', 'item']):
+            if user_id:
+                # Extract task reference and update details
+                import re
+
+                # Pattern for: "update task buy groceries to completed" or "update task buy groceries with description new description"
+                patterns = [
+                    r'(?:update|change|modify|edit).*?(?:task|todo|item)\s+(.+?)\s+(?:to|with)\s+(.+)',
+                    r'(?:update|change|modify|edit)\s+(.+?)\s+(?:to|with)\s+(.+)'
+                ]
+
+                task_reference = None
+                update_action = None
+
+                for pattern in patterns:
+                    match = re.search(pattern, message_lower, re.IGNORECASE)
+                    if match:
+                        task_reference = match.group(1).strip()
+                        update_action = match.group(2).strip()
+                        break
+
+                if task_reference and update_action:
+                    # Find a task that matches the reference
+                    tasks_query = select(Task).where(
+                        Task.user_id == user_id,
+                        Task.title.ilike(f'%{task_reference}%')
+                    )
+
+                    matching_tasks = db.exec(tasks_query).all()
+
+                    if matching_tasks:
+                        target_task = matching_tasks[0]  # Take the first match
+
+                        # Determine what to update based on the action
+                        if any(word in update_action for word in ['complete', 'completed', 'done', 'finished']):
+                            target_task.status = "Completed"
+                            target_task.completed_at = datetime.utcnow()
+                            db.add(target_task)
+                            db.commit()
+                            response_text = f"I've updated the task '{target_task.title}' to completed status."
+
+                        elif any(word in update_action for word in ['pending', 'incomplete', 'not done']):
+                            target_task.status = "Pending"
+                            target_task.completed_at = None
+                            db.add(target_task)
+                            db.commit()
+                            response_text = f"I've updated the task '{target_task.title}' to pending status."
+
+                        elif any(word in update_action for word in ['description', 'desc', 'detail']):
+                            # Extract new description if mentioned
+                            desc_patterns = [
+                                r'(?:with|and)\s+description\s+(.+)',
+                                r'(?:description|desc):\s*(.+)'
+                            ]
+
+                            new_description = None
+                            for desc_pattern in desc_patterns:
+                                desc_match = re.search(desc_pattern, update_action, re.IGNORECASE)
+                                if desc_match:
+                                    new_description = desc_match.group(1).strip().capitalize()
+                                    break
+
+                            if new_description:
+                                target_task.description = new_description
+                                db.add(target_task)
+                                db.commit()
+                                response_text = f"I've updated the description for task '{target_task.title}' to: '{new_description}'."
+                            else:
+                                response_text = f"Which description would you like to set for task '{target_task.title}'?"
+
+                        else:
+                            # Generic update - could be changing the title
+                            # Check if user wants to change the title
+                            if 'title' in update_action or 'name' in update_action:
+                                new_title = update_action.replace('title', '').replace('name', '').strip()
+                                if new_title:
+                                    old_title = target_task.title
+                                    target_task.title = new_title.capitalize()
+                                    db.add(target_task)
+                                    db.commit()
+                                    response_text = f"I've updated the task title from '{old_title}' to '{new_title}'."
+                                else:
+                                    response_text = f"What would you like to change the title of '{target_task.title}' to?"
+                            else:
+                                response_text = f"I can update the status (to pending/completed) or description of the task '{target_task.title}'. How would you like to update it?"
+                    else:
+                        response_text = f"I couldn't find a task matching '{task_reference}' to update."
+                else:
+                    response_text = "To update a task, please specify which one and what to update, like 'update task buy groceries to completed' or 'update task buy groceries with description new details'."
+            else:
+                response_text = "I can help you update a task, but you need to be logged in first."
 
         # Check if the user wants to delete a task
         elif any(word in message_lower for word in ['delete', 'remove', 'finish', 'complete']) and any(word in message_lower for word in ['task', 'todo', 'item']):
